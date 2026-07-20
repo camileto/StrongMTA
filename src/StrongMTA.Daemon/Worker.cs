@@ -1,0 +1,40 @@
+using StrongMTA.Engine;
+using StrongMTA.Smtp.Server;
+
+namespace StrongMTA.Daemon;
+
+/// <summary>
+/// Host real do daemon: recupera o spool no boot, liga o scheduler de entrega (paralelo,
+/// respeitando teto global e por domínio×VirtualMta), o promotor periódico de retries, e o
+/// listener de bounce/FBL — tudo de ponta a ponta, primeira vez que isso roda fora de testes.
+/// </summary>
+public sealed class Worker(
+    ILogger<Worker> logger,
+    SpoolBootRecovery bootRecovery,
+    FairShareDeliveryScheduler scheduler,
+    PendingRetryIndex pendingRetryIndex,
+    RetryScheduler retryScheduler,
+    BounceListener bounceListener) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var recovered = await bootRecovery.RecoverAsync(scheduler, pendingRetryIndex, stoppingToken).ConfigureAwait(false);
+        logger.LogInformation("Recuperação de boot: {Count} destinatário(s) retomado(s) do spool.", recovered);
+
+        bounceListener.Start();
+        logger.LogInformation("Listener de bounce/FBL escutando na porta {Port}.", bounceListener.Port);
+
+        try
+        {
+            await Task.WhenAll(
+                scheduler.RunAsync(stoppingToken),
+                retryScheduler.RunAsync(TimeSpan.FromSeconds(5), stoppingToken)
+            ).ConfigureAwait(false);
+        }
+        finally
+        {
+            bounceListener.Stop();
+            await bounceListener.WaitForShutdownAsync().ConfigureAwait(false);
+        }
+    }
+}

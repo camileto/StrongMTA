@@ -1,0 +1,30 @@
+{
+  "domains": [
+    {
+      "domainName": "gmail.com",
+      "maxConcurrentConnections": 40,
+      "retryIntervals": ["00:10:00", "00:30:00", "01:00:00", "04:00:00"],
+      "bounceAfter": "2.00:00:00"
+    },
+    {
+      "domainName": "hotmail.com",
+      "maxConcurrentConnections": 30,
+      "retryIntervals": ["00:10:00", "00:30:00", "01:00:00", "04:00:00"],
+      "bounceAfter": "2.00:00:00"
+    },
+    {
+      "domainName": "yahoo.com",
+      "maxConcurrentConnections": 30,
+      "retryIntervals": ["00:10:00", "00:30:00", "01:00:00", "04:00:00"],
+      "bounceAfter": "2.00:00:00"
+    }
+  ],
+  "virtualMtas": [
+    {
+      "name": "vmta-01",
+      "sourceIp": "0.0.0.0",
+      "hostName": "mta1.example.com",
+      "dkimSelector": "default"
+    }
+  ]
+}

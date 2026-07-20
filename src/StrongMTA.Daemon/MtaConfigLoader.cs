@@ -1,0 +1,88 @@
+using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using StrongMTA.Core;
+
+namespace StrongMTA.Daemon;
+
+/// <summary>
+/// Carrega <c>mta-config.json</c> (lista de domínios + VirtualMtas) uma única vez no boot —
+/// sem hot-reload, sem validação sofisticada (JSON inválido/incompleto lança e o daemon falha
+/// alto e claro ao iniciar). <see cref="TimeSpan"/>/<see cref="IPAddress"/> são lidos como string
+/// e convertidos manualmente — System.Text.Json não tem conversor nativo pra eles.
+/// </summary>
+internal static class MtaConfigLoader
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    public static (IDomainConfigProvider DomainConfigs, IVirtualMtaProvider VirtualMtas) Load(string path)
+    {
+        var json = File.ReadAllText(path);
+        var file = JsonSerializer.Deserialize<MtaConfigFile>(json, JsonOptions)
+            ?? throw new InvalidOperationException($"Config inválido ou vazio: {path}");
+
+        var defaultDomainConfig = new DomainConfig
+        {
+            DomainName = "*",
+            RetryIntervals = [TimeSpan.FromMinutes(30), TimeSpan.FromHours(1), TimeSpan.FromHours(4)],
+            BounceAfter = TimeSpan.FromHours(48)
+        };
+        var domainOverrides = file.Domains.ToDictionary(d => d.DomainName, d => d.ToDomainConfig(), StringComparer.OrdinalIgnoreCase);
+        var domainConfigProvider = new StaticDomainConfigProvider(defaultDomainConfig, domainOverrides);
+
+        var vmtas = file.VirtualMtas.ToDictionary(v => v.Name, v => v.ToVirtualMta());
+        var vmtaProvider = new StaticVirtualMtaProvider(vmtas);
+
+        return (domainConfigProvider, vmtaProvider);
+    }
+
+    private sealed class MtaConfigFile
+    {
+        public List<DomainConfigDto> Domains { get; set; } = [];
+        public List<VirtualMtaDto> VirtualMtas { get; set; } = [];
+    }
+
+    private sealed class DomainConfigDto
+    {
+        public string DomainName { get; set; } = "";
+        public int? MaxConcurrentConnections { get; set; }
+        public int? MaxMessagesPerMinute { get; set; }
+        public List<string> RetryIntervals { get; set; } = [];
+        public string? BounceAfter { get; set; }
+
+        public DomainConfig ToDomainConfig() => new()
+        {
+            DomainName = DomainName,
+            MaxConcurrentConnections = MaxConcurrentConnections ?? 5,
+            MaxMessagesPerMinute = MaxMessagesPerMinute ?? 100,
+            RetryIntervals = RetryIntervals.Count == 0
+                ? [TimeSpan.FromMinutes(30), TimeSpan.FromHours(1), TimeSpan.FromHours(4)]
+                : RetryIntervals.Select(TimeSpan.Parse).ToList(),
+            BounceAfter = TimeSpan.Parse(BounceAfter ?? "2.00:00:00")
+        };
+    }
+
+    private sealed class VirtualMtaDto
+    {
+        public string Name { get; set; } = "";
+        public string SourceIp { get; set; } = "";
+        public string HostName { get; set; } = "";
+        public string DkimSelector { get; set; } = "default";
+        public string? ColdVmtaName { get; set; }
+        public int? ColdVmtaDailyLimitPerDomain { get; set; }
+
+        public VirtualMta ToVirtualMta() => new()
+        {
+            Name = Name,
+            SourceIp = IPAddress.Parse(SourceIp),
+            HostName = HostName,
+            DkimSelector = DkimSelector,
+            ColdVmtaName = ColdVmtaName,
+            ColdVmtaDailyLimitPerDomain = ColdVmtaDailyLimitPerDomain
+        };
+    }
+}

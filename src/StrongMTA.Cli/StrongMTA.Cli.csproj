@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\StrongMTA.Core\StrongMTA.Core.csproj" />
+    <ProjectReference Include="..\StrongMTA.Engine\StrongMTA.Engine.csproj" />
+    <ProjectReference Include="..\StrongMTA.Accounting\StrongMTA.Accounting.csproj" />
+    <ProjectReference Include="..\StrongMTA.Spool\StrongMTA.Spool.csproj" />
+    <ProjectReference Include="..\StrongMTA.Dkim\StrongMTA.Dkim.csproj" />
+    <ProjectReference Include="..\StrongMTA.Bounce\StrongMTA.Bounce.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="3.0.0-preview.5.26302.115" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

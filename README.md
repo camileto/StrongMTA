@@ -1,6 +1,6 @@
 # StrongMTA
 
-High-volume Mail Transfer Agent written in C#/.NET 8, inspired by others MTAs. Built for large-scale outbound delivery with a goal of offering more native features and configuration options than traditional MTAs like Sendmail and Exim — without requiring third-party plugins, external scripts, or complex workarounds for common high-volume sending scenarios such as IP warm-up, per-domain delivery tuning, bounce correlation, and parallel fair-share dispatch.
+High-volume Mail Transfer Agent written in C#/.NET 8, inspired by other MTAs. Built for large-scale outbound delivery with a goal of offering more native features and configuration options than traditional MTAs like Sendmail and Exim — without requiring third-party plugins, external scripts, or complex workarounds for common high-volume sending scenarios such as IP warm-up, per-domain delivery tuning, bounce correlation, and parallel fair-share dispatch.
 
 > **Early stage.** This project is under active development and not yet production-ready. Work happens in spare time, so progress is gradual. A first release is expected within 6 months.
 
@@ -10,7 +10,7 @@ High-volume Mail Transfer Agent written in C#/.NET 8, inspired by others MTAs. B
 - **Two-level concurrency cap** — global (CPU-core heuristic, default `cores × 100`) and per queue (configurable per domain via `MaxConcurrentConnections`).
 - **DKIM signing** — automatic signing at submission time, PEM key per sender domain.
 - **IP warm-up** — automatic overflow routing to a "cold" VirtualMta while the main IP's daily per-domain limit has not yet been reached.
-- **SMTP response rules engine** —  `<smtp-pattern-list>`: regex over the response text with actions `ForceBounce`, `ForceExpire`, `ForceRetry`, `SkipMx`, `EnterBackoff`, `ExitBackoff`, `DisableSourceIp`, `BounceQueue`.
+- **SMTP response rules engine** — regex over the SMTP response text with actions `ForceBounce`, `ForceExpire`, `ForceRetry`, `SkipMx`, `EnterBackoff`, `ExitBackoff`, `DisableSourceIp`, `BounceQueue`.
 - **Bounced vs. Expired distinction** — `Bounced` = explicit permanent verdict (5xx, DSN `Status 5.x.x`, or `ForceBounce` rule); `Expired` = TTL exhausted without a permanent verdict from the remote.
 - **Per-queue backoff mode** — alternate retry intervals when a queue is degraded; configurable automatic reversion to normal.
 - **Inbound bounce/FBL listener** — dedicated SMTP listener for DSN (RFC 3464) and ARF feedback (RFC 5965); VERP token correlation; category classification.

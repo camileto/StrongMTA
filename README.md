@@ -32,6 +32,7 @@ Planned features for upcoming releases, in no particular order:
 - **DANE / MTA-STS** — opportunistic and enforced TLS policy support for outbound delivery.
 - **VirtualMta IP pool** — round-robin across multiple source IPs within a single VirtualMta.
 - **Hot-reload of `mta-config.json`** — apply domain and VirtualMta config changes without restarting the daemon.
+- **AI-driven auto-configuration** — the daemon observes delivery patterns per domain (error rates, SMTP response types, retry behavior) and automatically adjusts parameters such as concurrency limits, retry intervals, and backoff thresholds — or suggests new response rules — without requiring manual operator intervention.
 
 ## Project structure
 

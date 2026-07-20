@@ -5,3 +5,10 @@ No part of this software may be reproduced, distributed, modified, or transmitte
 in any form or by any means without the prior written permission of the copyright holder.
 
 Unauthorized use, copying, or distribution of this software is strictly prohibited.
+
+---
+
+Note on future licensing: It is the author's intention to release this project under the
+GNU General Public License v3.0 (GPL-3.0) once the software reaches a stable release.
+During this early stage of development, the source code is kept under a proprietary
+license to allow for focused iteration before opening contributions to the community.

@@ -6,10 +6,9 @@ using StrongMTA.Core;
 namespace StrongMTA.Daemon;
 
 /// <summary>
-/// Carrega <c>mta-config.json</c> (lista de domínios + VirtualMtas) uma única vez no boot —
-/// sem hot-reload, sem validação sofisticada (JSON inválido/incompleto lança e o daemon falha
-/// alto e claro ao iniciar). <see cref="TimeSpan"/>/<see cref="IPAddress"/> são lidos como string
-/// e convertidos manualmente — System.Text.Json não tem conversor nativo pra eles.
+/// Carrega <c>mta-config.json</c> (lista de domínios + VirtualMtas). JSON inválido/incompleto
+/// lança e o daemon falha alto e claro ao iniciar. <see cref="TimeSpan"/>/<see cref="IPAddress"/>
+/// são lidos como string e convertidos manualmente — System.Text.Json não tem conversor nativo pra eles.
 /// </summary>
 internal static class MtaConfigLoader
 {
@@ -19,25 +18,45 @@ internal static class MtaConfigLoader
         Converters = { new JsonStringEnumConverter() }
     };
 
+    /// <summary>Carrega o arquivo e devolve providers estáticos (boot inicial ou testes).</summary>
     public static (IDomainConfigProvider DomainConfigs, IVirtualMtaProvider VirtualMtas) Load(string path)
+    {
+        var (defaultConfig, overrides, vmtas) = ParseConfig(path);
+        return (new StaticDomainConfigProvider(defaultConfig, overrides), new StaticVirtualMtaProvider(vmtas));
+    }
+
+    /// <summary>Carrega o arquivo e devolve providers "vivos" que suportam hot-reload via <c>Reload()</c>.</summary>
+    public static (LiveDomainConfigProvider DomainConfigs, LiveVirtualMtaProvider VirtualMtas) LoadLive(string path)
+    {
+        var (defaultConfig, overrides, vmtas) = ParseConfig(path);
+        return (new LiveDomainConfigProvider(defaultConfig, overrides), new LiveVirtualMtaProvider(vmtas));
+    }
+
+    /// <summary>
+    /// Lê e parseia o arquivo, separando o domínio catch-all (<c>"*"</c>) do default global dos overrides
+    /// por domínio explícito. Reutilizado tanto no boot quanto em cada reload.
+    /// </summary>
+    internal static (DomainConfig DefaultConfig, IReadOnlyDictionary<string, DomainConfig> Overrides, IReadOnlyDictionary<string, VirtualMta> VirtualMtas) ParseConfig(string path)
     {
         var json = File.ReadAllText(path);
         var file = JsonSerializer.Deserialize<MtaConfigFile>(json, JsonOptions)
             ?? throw new InvalidOperationException($"Config inválido ou vazio: {path}");
 
-        var defaultDomainConfig = new DomainConfig
+        // Se há uma entrada "*" no JSON ela vira o catch-all real; sem ela usa os valores embutidos.
+        var wildcardDto = file.Domains.FirstOrDefault(d => d.DomainName == "*");
+        var defaultConfig = wildcardDto?.ToDomainConfig() ?? new DomainConfig
         {
             DomainName = "*",
             RetryIntervals = [TimeSpan.FromMinutes(30), TimeSpan.FromHours(1), TimeSpan.FromHours(4)],
             BounceAfter = TimeSpan.FromHours(48)
         };
-        var domainOverrides = file.Domains.ToDictionary(d => d.DomainName, d => d.ToDomainConfig(), StringComparer.OrdinalIgnoreCase);
-        var domainConfigProvider = new StaticDomainConfigProvider(defaultDomainConfig, domainOverrides);
+
+        var overrides = file.Domains
+            .Where(d => d.DomainName != "*")
+            .ToDictionary(d => d.DomainName, d => d.ToDomainConfig(), StringComparer.OrdinalIgnoreCase);
 
         var vmtas = file.VirtualMtas.ToDictionary(v => v.Name, v => v.ToVirtualMta());
-        var vmtaProvider = new StaticVirtualMtaProvider(vmtas);
-
-        return (domainConfigProvider, vmtaProvider);
+        return (defaultConfig, overrides, vmtas);
     }
 
     private sealed class MtaConfigFile
@@ -58,7 +77,7 @@ internal static class MtaConfigLoader
         {
             DomainName = DomainName,
             MaxConcurrentConnections = MaxConcurrentConnections ?? 5,
-            MaxMessagesPerMinute = MaxMessagesPerMinute ?? 100,
+            MaxMessagesPerMinute = MaxMessagesPerMinute ?? 0,
             RetryIntervals = RetryIntervals.Count == 0
                 ? [TimeSpan.FromMinutes(30), TimeSpan.FromHours(1), TimeSpan.FromHours(4)]
                 : RetryIntervals.Select(TimeSpan.Parse).ToList(),

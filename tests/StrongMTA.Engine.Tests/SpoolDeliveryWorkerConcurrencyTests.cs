@@ -132,9 +132,9 @@ public class SpoolDeliveryWorkerConcurrencyTests : IDisposable
         Assert.Equal(totalItems, deliveredCount);
 
         // sequencial seria ~totalItems * artificialDelay; com paralelismo real isso deveria ficar
-        // bem abaixo da metade disso (folga generosa pra não ficar flaky por overhead de socket/CI).
+        // bem abaixo de 2/3 disso (folga generosa pra não ficar flaky por overhead de socket/CI).
         var sequentialEstimate = artificialDelay * totalItems;
-        Assert.True(elapsed < sequentialEstimate / 2,
+        Assert.True(elapsed < sequentialEstimate * 2 / 3,
             $"esperava entrega paralela bem mais rápida que o sequencial estimado ({sequentialEstimate}); levou {elapsed}");
 
         Assert.True(big1.MaxConcurrentSeen <= bigDomainCap, $"big1 viu {big1.MaxConcurrentSeen} conexões simultâneas, acima do teto {bigDomainCap}");

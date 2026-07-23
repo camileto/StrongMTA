@@ -19,6 +19,7 @@ High-volume Mail Transfer Agent written in C#/.NET 8, inspired by other MTAs. Bu
 - **Per-domain rate limiting** — token-bucket rate limiter per queue (`MaxMessagesPerMinute`); zero (default) disables limiting.
 - **Spool auto-purge** — configurable retention policy (`RetainAfterTerminal`) to automatically delete delivered and expired messages from disk.
 - **VirtualMta IP pool** — round-robin across multiple source IPs within a single VirtualMta; `disable-source-ip` disables the specific failing IP, not the entire VirtualMta, so the remaining IPs keep sending.
+- **Hot-reload of `mta-config.json`** — domain and VirtualMta config changes are applied within ~500 ms of saving the file, without restarting the daemon; on parse errors the current config is kept and the error is logged.
 - **Admin CLI** — test submission, queue listing/filtering, pause/resume by JobId, accounting tail.
 
 ## Roadmap
@@ -31,7 +32,6 @@ Planned features for upcoming releases, in no particular order:
 - **Web dashboard** — real-time queue stats, accounting visualization, and domain-level delivery reports.
 - **HTTP Transmissions API** — REST endpoint for message submission, compatible with common ESP workflow patterns.
 - **DANE / MTA-STS** — opportunistic and enforced TLS policy support for outbound delivery.
-- **Hot-reload of `mta-config.json`** — apply domain and VirtualMta config changes without restarting the daemon.
 - **AI-driven auto-configuration** — the daemon observes delivery patterns per domain (error rates, SMTP response types, retry behavior) and automatically adjusts parameters such as concurrency limits, retry intervals, and backoff thresholds — or suggests new response rules — without requiring manual operator intervention.
 
 ## Project structure
@@ -71,7 +71,7 @@ dotnet build StrongMTA.sln
 dotnet test StrongMTA.sln
 ```
 
-143 tests, 0 failures.
+147 tests, 0 failures.
 
 ## Daemon configuration
 

@@ -38,9 +38,12 @@ builder.Services.AddSingleton<IDkimSigningService>(_ =>
     new DkimSigningService(new StaticDkimKeyProvider(new Dictionary<string, DkimSigningConfig>())));
 
 var mtaConfigPath = builder.Configuration["MtaConfigPath"] ?? "mta-config.json";
-var (domainConfigProvider, vmtaProvider) = MtaConfigLoader.Load(mtaConfigPath);
-builder.Services.AddSingleton(domainConfigProvider);
-builder.Services.AddSingleton(vmtaProvider);
+var (domainConfigProvider, vmtaProvider) = MtaConfigLoader.LoadLive(mtaConfigPath);
+builder.Services.AddSingleton<IDomainConfigProvider>(domainConfigProvider);
+builder.Services.AddSingleton<IVirtualMtaProvider>(vmtaProvider);
+builder.Services.AddSingleton(sp => new MtaConfigWatcher(
+    mtaConfigPath, domainConfigProvider, vmtaProvider,
+    sp.GetRequiredService<ILogger<MtaConfigWatcher>>()));
 
 builder.Services.AddSingleton(_ =>
 {

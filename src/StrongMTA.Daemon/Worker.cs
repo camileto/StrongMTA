@@ -15,6 +15,7 @@ public sealed class Worker(
     PendingRetryIndex pendingRetryIndex,
     RetryScheduler retryScheduler,
     SpoolPurgeService spoolPurgeService,
+    MtaConfigWatcher configWatcher,
     BounceListener bounceListener) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -22,6 +23,7 @@ public sealed class Worker(
         var recovered = await bootRecovery.RecoverAsync(scheduler, pendingRetryIndex, stoppingToken).ConfigureAwait(false);
         logger.LogInformation("Recuperação de boot: {Count} destinatário(s) retomado(s) do spool.", recovered);
 
+        configWatcher.Start();
         bounceListener.Start();
         logger.LogInformation("Listener de bounce/FBL escutando na porta {Port}.", bounceListener.Port);
 

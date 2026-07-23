@@ -29,6 +29,10 @@ public sealed class FakeSmtpServer : IAsyncDisposable
     public string? ReceivedEhloArgument { get; private set; }
     public IPEndPoint? RemoteEndPoint { get; private set; }
 
+    /// <summary>Número de entregas DATA completadas com sucesso — útil para testes de pool de IPs onde múltiplas conexões chegam ao mesmo servidor.</summary>
+    public int CompletedDeliveries => _completedDeliveries;
+    private int _completedDeliveries;
+
     /// <summary>Atraso artificial antes de responder ao FinalResponse — sem isso, conexões completam tão rápido que nunca chegam a se sobrepor de fato num teste de concorrência.</summary>
     public TimeSpan ArtificialDelay { get; set; } = TimeSpan.Zero;
 
@@ -159,6 +163,7 @@ public sealed class FakeSmtpServer : IAsyncDisposable
             if (!DataStartResponse.StartsWith('3')) { await DrainQuitAsync(stream).ConfigureAwait(false); return; }
 
             ReceivedDataBody = await ReadUntilDotTerminatorAsync(stream).ConfigureAwait(false);
+            Interlocked.Increment(ref _completedDeliveries);
             if (ArtificialDelay > TimeSpan.Zero)
                 await Task.Delay(ArtificialDelay).ConfigureAwait(false);
             await WriteAsync(stream, FinalResponse).ConfigureAwait(false);

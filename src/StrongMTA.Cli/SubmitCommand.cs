@@ -54,7 +54,7 @@ internal static class SubmitCommand
             var vmta = new VirtualMta
             {
                 Name = parseResult.GetRequiredValue(vmtaName),
-                SourceIp = IPAddress.Parse(parseResult.GetRequiredValue(sourceIp)),
+                SourceIps = [IPAddress.Parse(parseResult.GetRequiredValue(sourceIp))],
                 HostName = parseResult.GetRequiredValue(helo),
                 DkimSelector = parseResult.GetValue(dkimSelector) ?? "default"
             };

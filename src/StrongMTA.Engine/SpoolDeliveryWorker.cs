@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Net;
 using StrongMTA.Accounting;
 using StrongMTA.Bounce;
 using StrongMTA.Core;
@@ -14,6 +16,9 @@ namespace StrongMTA.Engine;
 /// respeitando o TTL de bounce-after por domínio. As <see cref="ResponseRule"/> configuradas
 /// no domínio (via <see cref="DomainConfig.ResponseRules"/>) podem sobrepor essa classificação
 /// default — lista vazia (o padrão) significa nenhuma regra e nenhuma mudança de comportamento.
+/// O IP de origem é escolhido por round-robin sobre <see cref="VirtualMta.SourceIps"/>, pulando
+/// IPs temporariamente desabilitados (disable-source-ip). <see cref="DisableSourceIp"/> desabilita
+/// o IP específico que gerou a regra, não o VirtualMta inteiro.
 /// </summary>
 public sealed class SpoolDeliveryWorker(
     SpoolReader spoolReader,
@@ -29,11 +34,13 @@ public sealed class SpoolDeliveryWorker(
     BounceQueueService bounceQueueService,
     int smtpPort = 25)
 {
+    // contador de round-robin por VirtualMta; int[1] para permitir Interlocked.Increment sobre um ref
+    private readonly ConcurrentDictionary<string, int[]> _ipCounters = new();
+
     public async Task<SmtpDeliveryResult> DeliverOneAsync(RecipientWorkItem item, CancellationToken cancellationToken)
     {
         // checagem de pausa ANTES de qualquer outra coisa: um operador pode ter pausado este
-        // destinatário (CLI, por JobId) entre o enfileiramento e esta tentativa — não tocamos
-        // o estado nem abrimos conexão alguma se for o caso.
+        // destinatário (CLI, por JobId) entre o enfileiramento e esta tentativa.
         var currentState = await spoolReader.ReadStateAsync(item.StateFilePath, cancellationToken).ConfigureAwait(false);
         var currentRecipient = currentState?.Recipients.FirstOrDefault(r => r.RecipientId == item.RecipientId);
         if (currentRecipient?.Status == RecipientStatus.Paused)
@@ -41,20 +48,18 @@ public sealed class SpoolDeliveryWorker(
 
         var virtualMta = virtualMtaProvider.GetVirtualMta(item.VirtualMtaName);
 
-        // disable-source-ip (regra de resposta SMTP): mesmo tratamento de uma falha de conexão
-        // normal, sem nem tentar abrir socket — decisão administrativa nossa, vai pro caminho
-        // Transient/retry já existente em ApplyResultAsync.
-        if (await disabledSourceStore.IsDisabledAsync(virtualMta.Name, cancellationToken).ConfigureAwait(false))
+        // round-robin pelo pool de IPs, pulando os desabilitados pelo disable-source-ip
+        var selectedIp = await SelectSourceIpAsync(virtualMta, cancellationToken).ConfigureAwait(false);
+        if (selectedIp is null)
         {
-            var disabledResult = SmtpDeliveryResult.ConnectionFailure(
-                $"VirtualMta '{virtualMta.Name}' temporariamente desabilitado (disable-source-ip).");
-            await ApplyResultAsync(item, disabledResult, matchedRule: null, cancellationToken).ConfigureAwait(false);
-            return disabledResult;
+            var allDisabledResult = SmtpDeliveryResult.ConnectionFailure(
+                $"Todos os {virtualMta.SourceIps.Count} IP(s) do VirtualMta '{virtualMta.Name}' estão temporariamente desabilitados (disable-source-ip).");
+            await ApplyResultAsync(item, allDisabledResult, matchedRule: null, selectedIp: null, cancellationToken).ConfigureAwait(false);
+            return allDisabledResult;
         }
 
         // marca InFlight ANTES de conectar: se o processo morrer durante a tentativa, o boot
-        // seguinte enxerga esse status (em vez do Pending/Transient anterior, que poderia ter
-        // um NextAttemptAt no futuro) e sabe que deve tornar o destinatário retryable de imediato.
+        // seguinte vê este status e torna o destinatário retryable de imediato.
         await stateUpdater.UpdateRecipientAsync(item.MessageId, item.RecipientId, recipient =>
         {
             recipient.Status = RecipientStatus.InFlight;
@@ -74,7 +79,7 @@ public sealed class SpoolDeliveryWorker(
                 TargetHost = mxHosts[hostIndex].HostName,
                 TargetPort = smtpPort,
                 HeloHostName = virtualMta.HostName,
-                LocalIpAddress = virtualMta.SourceIp,
+                LocalIpAddress = selectedIp,
                 EnvelopeFrom = item.EnvelopeFrom,
                 RecipientAddress = item.RecipientAddress,
                 OpenBodyStream = ct => spoolReader.OpenBodyStreamAsync(item.MsgFilePath, ct)
@@ -83,8 +88,7 @@ public sealed class SpoolDeliveryWorker(
             result = await new SmtpDeliveryClient().SendAsync(request, cancellationToken).ConfigureAwait(false);
             matchedRule = ruleEngine.Evaluate(domainConfig.ResponseRules, result.ResponseText ?? result.ErrorDetail);
 
-            // skip-mx: tenta o próximo MX dentro da MESMA tentativa (sem round-trip pela fila
-            // de retry) — só continua o loop se ainda houver outro host candidato.
+            // skip-mx: tenta o próximo MX dentro da MESMA tentativa, sem round-trip pela fila.
             var skipToNextHost = matchedRule?.Has(ResponseRuleAction.SkipMx) == true && hostIndex + 1 < mxHosts.Count;
             if (!skipToNextHost)
                 break;
@@ -92,12 +96,34 @@ public sealed class SpoolDeliveryWorker(
             hostIndex++;
         }
 
-        await ApplyResultAsync(item, result, matchedRule, cancellationToken).ConfigureAwait(false);
+        await ApplyResultAsync(item, result, matchedRule, selectedIp, cancellationToken).ConfigureAwait(false);
 
         return result;
     }
 
-    private async Task ApplyResultAsync(RecipientWorkItem item, SmtpDeliveryResult result, ResponseRule? matchedRule, CancellationToken cancellationToken)
+    /// <summary>
+    /// Round-robin sobre <see cref="VirtualMta.SourceIps"/>, pulando IPs desabilitados.
+    /// Retorna null se todos os IPs do pool estiverem desabilitados.
+    /// </summary>
+    private async Task<IPAddress?> SelectSourceIpAsync(VirtualMta vmta, CancellationToken ct)
+    {
+        var counter = _ipCounters.GetOrAdd(vmta.Name, _ => new int[1]);
+        var raw = Interlocked.Increment(ref counter[0]);
+        var count = vmta.SourceIps.Count;
+        // (raw - 1) % count dá o índice 0-based; uint-cast evita comportamento negativo do % em C#
+        var startIndex = (int)((uint)(raw - 1) % (uint)count);
+
+        for (var i = 0; i < count; i++)
+        {
+            var ip = vmta.SourceIps[(startIndex + i) % count];
+            if (!await disabledSourceStore.IsDisabledAsync(ip.ToString(), ct).ConfigureAwait(false))
+                return ip;
+        }
+
+        return null;
+    }
+
+    private async Task ApplyResultAsync(RecipientWorkItem item, SmtpDeliveryResult result, ResponseRule? matchedRule, IPAddress? selectedIp, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
         var responseText = result.ResponseText ?? result.ErrorDetail;
@@ -172,7 +198,7 @@ public sealed class SpoolDeliveryWorker(
         }, cancellationToken).ConfigureAwait(false);
 
         if (matchedRule is not null)
-            await ApplySideEffectsAsync(matchedRule, queueKey, item, cancellationToken).ConfigureAwait(false);
+            await ApplySideEffectsAsync(matchedRule, queueKey, item, selectedIp, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>TTL (BounceAfter) esgotado → Expired (decisão nossa, sem veredito explícito do remoto). Senão, agenda retry usando o intervalo normal ou de backoff conforme o estado atual da fila.</summary>
@@ -190,7 +216,7 @@ public sealed class SpoolDeliveryWorker(
         return (RecipientStatus.Transient, now + interval, true, responseText);
     }
 
-    private async Task ApplySideEffectsAsync(ResponseRule rule, QueueKey queueKey, RecipientWorkItem item, CancellationToken cancellationToken)
+    private async Task ApplySideEffectsAsync(ResponseRule rule, QueueKey queueKey, RecipientWorkItem item, IPAddress? selectedIp, CancellationToken cancellationToken)
     {
         if (rule.Has(ResponseRuleAction.EnterBackoff))
             await backoffStateStore.EnterBackoffAsync(queueKey, rule.BackoffToNormalAfter, cancellationToken).ConfigureAwait(false);
@@ -198,11 +224,11 @@ public sealed class SpoolDeliveryWorker(
         if (rule.Has(ResponseRuleAction.ExitBackoff))
             await backoffStateStore.ExitBackoffAsync(queueKey, cancellationToken).ConfigureAwait(false);
 
-        if (rule.Has(ResponseRuleAction.DisableSourceIp))
-            await disabledSourceStore.DisableAsync(item.VirtualMtaName, rule.ReenableAfter, cancellationToken).ConfigureAwait(false);
+        if (rule.Has(ResponseRuleAction.DisableSourceIp) && selectedIp is not null)
+            await disabledSourceStore.DisableAsync(selectedIp.ToString(), rule.ReenableAfter, cancellationToken).ConfigureAwait(false);
 
         if (rule.Has(ResponseRuleAction.BounceQueue))
-            _ = bounceQueueService.BounceQueueAsync(item.DestinationDomain, CancellationToken.None); // fire-and-forget: não bloqueia a escrita do .state deste destinatário
+            _ = bounceQueueService.BounceQueueAsync(item.DestinationDomain, CancellationToken.None); // fire-and-forget
     }
 
     private static AccountingEventType ToEventType(RecipientStatus status) => status switch

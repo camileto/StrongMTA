@@ -69,20 +69,32 @@ internal static class MtaConfigLoader
     private sealed class VirtualMtaDto
     {
         public string Name { get; set; } = "";
-        public string SourceIp { get; set; } = "";
+        /// <summary>Singular (compat): aceita um único IP sem precisar de lista.</summary>
+        public string? SourceIp { get; set; }
+        /// <summary>Pool de IPs para round-robin. Prevalece sobre <see cref="SourceIp"/> quando ambos forem especificados.</summary>
+        public List<string>? SourceIps { get; set; }
         public string HostName { get; set; } = "";
         public string DkimSelector { get; set; } = "default";
         public string? ColdVmtaName { get; set; }
         public int? ColdVmtaDailyLimitPerDomain { get; set; }
 
-        public VirtualMta ToVirtualMta() => new()
+        public VirtualMta ToVirtualMta()
         {
-            Name = Name,
-            SourceIp = IPAddress.Parse(SourceIp),
-            HostName = HostName,
-            DkimSelector = DkimSelector,
-            ColdVmtaName = ColdVmtaName,
-            ColdVmtaDailyLimitPerDomain = ColdVmtaDailyLimitPerDomain
-        };
+            List<IPAddress> ips = SourceIps is { Count: > 0 }
+                ? SourceIps.Select(IPAddress.Parse).ToList()
+                : SourceIp is not null
+                    ? [IPAddress.Parse(SourceIp)]
+                    : throw new InvalidOperationException($"VirtualMta '{Name}': é necessário ao menos um IP em 'sourceIp' ou 'sourceIps'.");
+
+            return new VirtualMta
+            {
+                Name = Name,
+                SourceIps = ips,
+                HostName = HostName,
+                DkimSelector = DkimSelector,
+                ColdVmtaName = ColdVmtaName,
+                ColdVmtaDailyLimitPerDomain = ColdVmtaDailyLimitPerDomain
+            };
+        }
     }
 }

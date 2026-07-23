@@ -3,13 +3,14 @@ using System.Net;
 namespace StrongMTA.Core;
 
 /// <summary>
-/// Identidade de envio: um IP de origem fixo + hostname HELO + selector DKIM.
-/// No MVP não há pool/round-robin — cada VirtualMta tem exatamente um IP.
+/// Identidade de envio: pool de IPs de origem + hostname HELO + selector DKIM.
+/// O IP efetivamente usado em cada entrega é escolhido via round-robin sobre <see cref="SourceIps"/>,
+/// pulando os temporariamente desabilitados (disable-source-ip).
 /// </summary>
 public sealed class VirtualMta
 {
     public required string Name { get; init; }
-    public required IPAddress SourceIp { get; init; }
+    public required IReadOnlyList<IPAddress> SourceIps { get; init; }
     public required string HostName { get; init; }
     public required string DkimSelector { get; init; }
 

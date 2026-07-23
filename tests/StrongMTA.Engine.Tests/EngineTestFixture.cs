@@ -45,10 +45,11 @@ public sealed class EngineTestFixture : IDisposable
 
     public static VirtualMta CreateVirtualMta(
         string name = "vmta-01", IPAddress? sourceIp = null, string hostName = "client.test",
-        string? coldVmtaName = null, int? coldDailyLimit = null) => new()
+        string? coldVmtaName = null, int? coldDailyLimit = null,
+        IReadOnlyList<IPAddress>? sourceIps = null) => new()
     {
         Name = name,
-        SourceIp = sourceIp ?? IPAddress.Loopback,
+        SourceIps = sourceIps ?? [sourceIp ?? IPAddress.Loopback],
         HostName = hostName,
         DkimSelector = "default",
         ColdVmtaName = coldVmtaName,

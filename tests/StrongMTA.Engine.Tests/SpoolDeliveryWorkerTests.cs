@@ -318,7 +318,8 @@ public class SpoolDeliveryWorkerTests : IDisposable
         await submission.SubmitAsync(null, [new SubmissionRecipient("destino@example.com", "vmta-01")], Body());
         var item = scheduler.Items[0];
 
-        await _fixture.DisabledSourceStore.DisableAsync("vmta-01", reenableAfter: null);
+        // desabilita pelo IP do VirtualMta padrão (127.0.0.1), não pelo nome do VMTA
+        await _fixture.DisabledSourceStore.DisableAsync(IPAddress.Loopback.ToString(), reenableAfter: null);
 
         // porta inválida de propósito: se o worker tentasse conectar mesmo desabilitado, o teste falharia por exceção/timeout
         var worker = CreateWorker(smtpPort: 1, pendingIndex);

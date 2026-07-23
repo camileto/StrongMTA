@@ -31,6 +31,8 @@ builder.Services.AddSingleton<SpoolBootRecovery>();
 builder.Services.AddSingleton<IAccountingSink>(sp =>
     new JsonlAccountingSink(sp.GetRequiredService<SpoolPaths>().AccountingDirectory));
 builder.Services.AddSingleton<IMxResolver, DnsClientMxResolver>();
+builder.Services.AddSingleton<IDaneTlsaResolver, DaneTlsaResolver>();
+builder.Services.AddSingleton<IMtaStsResolver>(_ => new MtaStsResolver(new HttpClient { Timeout = TimeSpan.FromSeconds(15) }));
 
 // DKIM sem domínios configurados nesta milestone (carregamento de chave por arquivo fica pra depois) —
 // toda mensagem passa sem assinatura, mesmo caminho de pass-through já exercitado nos testes.
@@ -64,6 +66,8 @@ builder.Services.AddSingleton(sp => new SpoolDeliveryWorker(
     sp.GetRequiredService<BackoffStateStore>(),
     sp.GetRequiredService<DisabledSourceStore>(),
     sp.GetRequiredService<BounceQueueService>(),
+    sp.GetRequiredService<IDaneTlsaResolver>(),
+    sp.GetRequiredService<IMtaStsResolver>(),
     smtpPort));
 
 builder.Services.AddSingleton(sp => new FairShareDeliveryScheduler(

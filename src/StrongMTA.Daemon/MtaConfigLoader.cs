@@ -73,6 +73,9 @@ internal static class MtaConfigLoader
         public List<string> RetryIntervals { get; set; } = [];
         public string? BounceAfter { get; set; }
 
+        public bool EnableDane { get; set; }
+        public bool EnableMtaSts { get; set; }
+
         public DomainConfig ToDomainConfig() => new()
         {
             DomainName = DomainName,
@@ -81,7 +84,9 @@ internal static class MtaConfigLoader
             RetryIntervals = RetryIntervals.Count == 0
                 ? [TimeSpan.FromMinutes(30), TimeSpan.FromHours(1), TimeSpan.FromHours(4)]
                 : RetryIntervals.Select(TimeSpan.Parse).ToList(),
-            BounceAfter = TimeSpan.Parse(BounceAfter ?? "2.00:00:00")
+            BounceAfter = TimeSpan.Parse(BounceAfter ?? "2.00:00:00"),
+            EnableDane = EnableDane,
+            EnableMtaSts = EnableMtaSts
         };
     }
 

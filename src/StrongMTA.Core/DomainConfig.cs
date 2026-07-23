@@ -23,6 +23,12 @@ public int MaxMessagesPerMinute { get; init; } = 0;
     /// <summary>Regras de override sobre o texto da resposta SMTP/diagnóstico de DSN — vazio (padrão) significa nenhuma regra e nenhuma mudança de comportamento.</summary>
     public IReadOnlyList<ResponseRule> ResponseRules { get; init; } = [];
 
+    /// <summary>Habilita DANE: consulta registros TLSA via DNSSEC antes de cada tentativa de entrega. Requer validação DNSSEC disponível no resolver. Default: false.</summary>
+    public bool EnableDane { get; init; }
+
+    /// <summary>Habilita MTA-STS: consulta e aplica a política MTA-STS do domínio de destino. Default: false.</summary>
+    public bool EnableMtaSts { get; init; }
+
     /// <summary>Retorna o intervalo de retry para a N-ésima tentativa (1-based), saturando no último valor da lista.</summary>
     public TimeSpan GetRetryInterval(int attemptNumber) => GetIntervalFrom(RetryIntervals, attemptNumber);
 

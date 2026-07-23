@@ -21,6 +21,8 @@ High-volume Mail Transfer Agent written in C#/.NET 8, inspired by other MTAs. Bu
 - **VirtualMta IP pool** — round-robin across multiple source IPs within a single VirtualMta; `disable-source-ip` disables the specific failing IP, not the entire VirtualMta, so the remaining IPs keep sending.
 - **VMTA-wide concurrency cap** — optional `maxConcurrentConnections` in the VirtualMta block caps the total simultaneous connections across all destination domains for that VirtualMta; `null` (default) leaves only the per-domain and global limits in effect.
 - **Hot-reload of `mta-config.json`** — domain and VirtualMta config changes are applied within ~500 ms of saving the file, without restarting the daemon; on parse errors the current config is kept and the error is logged.
+- **DANE (RFC 7672)** — per domain, opt-in via `enableDane: true`; queries `_25._tcp.<mx-host>` TLSA records and requires DNSSEC validation (AD flag). Supports DANE-EE (usage 3) with FullCertificate and SPKI selectors, SHA-256/SHA-512/exact matching. PKIX-TA, PKIX-EE, and DANE-TA (which require chain validation) are not implemented.
+- **MTA-STS (RFC 8461)** — per domain, opt-in via `enableMtaSts: true`; fetches the policy via DNS TXT `_mta-sts.<domain>` + HTTPS; `enforce` mode requires a PKI-valid certificate for matching MX hosts; `testing` mode is observed but not enforced. Policy results are cached for up to `max_age` seconds (capped at 24 h).
 - **Admin CLI** — test submission, queue listing/filtering, pause/resume by JobId, accounting tail.
 
 ## Roadmap
@@ -31,7 +33,8 @@ Planned features for upcoming releases, in no particular order:
 - **Suppression list** — native do-not-send list checked at submission and delivery time.
 - **Web dashboard** — real-time queue stats, accounting visualization, and domain-level delivery reports.
 - **HTTP Transmissions API** — REST endpoint for message submission, compatible with common ESP workflow patterns.
-- **DANE / MTA-STS** — opportunistic and enforced TLS policy support for outbound delivery.
+- **DANE-TA / PKIX-TA / PKIX-EE** — chain-level TLSA certificate usage types (require full X.509 chain validation, not yet implemented).
+- **TLS-RPT (RFC 8460)** — aggregate TLS failure reporting to domain operators.
 - **AI-driven auto-configuration** — the daemon observes delivery patterns per domain (error rates, SMTP response types, retry behavior) and automatically adjusts parameters such as concurrency limits, retry intervals, and backoff thresholds — or suggests new response rules — without requiring manual operator intervention.
 
 ## Project structure
@@ -71,7 +74,7 @@ dotnet build StrongMTA.sln
 dotnet test StrongMTA.sln
 ```
 
-149 tests, 0 failures.
+167 tests, 0 failures.
 
 ## Daemon configuration
 

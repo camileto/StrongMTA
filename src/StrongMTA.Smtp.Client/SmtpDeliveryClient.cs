@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
 namespace StrongMTA.Smtp.Client;
@@ -42,6 +43,7 @@ public sealed class SmtpDeliveryClient
             if (!ehlo.IsPositiveCompletion)
                 return Classify(ehlo, usedStartTls);
 
+            var requiresTls = request.TlsPolicy.RequiresTls || request.RequireStartTls;
             var supportsStartTls = ehlo.Lines.Any(l => l.Equals("STARTTLS", StringComparison.OrdinalIgnoreCase));
             if (supportsStartTls)
             {
@@ -51,7 +53,7 @@ public sealed class SmtpDeliveryClient
                     try
                     {
                         var sslStream = new SslStream(stream, leaveInnerStreamOpen: false,
-                            userCertificateValidationCallback: (_, _, _, _) => true); // oportunista: criptografa sem validar identidade (DANE/MTA-STS ficam para fase 2)
+                            userCertificateValidationCallback: BuildCertCallback(request.TlsPolicy));
                         await sslStream.AuthenticateAsClientAsync(request.TargetHost).ConfigureAwait(false);
                         stream = sslStream;
                         reader = new SmtpResponseReader(stream);
@@ -63,17 +65,17 @@ public sealed class SmtpDeliveryClient
                     }
                     catch (Exception ex) when (ex is IOException or AuthenticationException)
                     {
-                        if (request.RequireStartTls)
+                        if (requiresTls)
                             return new SmtpDeliveryResult { Outcome = SmtpDeliveryOutcome.Transient, ErrorDetail = $"Falha no handshake STARTTLS: {ex.Message}" };
                         // oportunista: cai para texto puro na conexão original (stream/reader já são os de antes do upgrade)
                     }
                 }
-                else if (request.RequireStartTls)
+                else if (requiresTls)
                 {
                     return new SmtpDeliveryResult { Outcome = SmtpDeliveryOutcome.Transient, ErrorDetail = "Servidor remoto rejeitou STARTTLS e a política exige TLS." };
                 }
             }
-            else if (request.RequireStartTls)
+            else if (requiresTls)
             {
                 return new SmtpDeliveryResult { Outcome = SmtpDeliveryOutcome.Transient, ErrorDetail = "Servidor remoto não anuncia STARTTLS e a política exige TLS." };
             }
@@ -115,6 +117,23 @@ public sealed class SmtpDeliveryClient
                 await stream.DisposeAsync().ConfigureAwait(false);
             socket?.Dispose();
         }
+    }
+
+    private static RemoteCertificateValidationCallback BuildCertCallback(TlsPolicy policy)
+    {
+        if (policy.DaneTlsaRecords is { Count: > 0 })
+        {
+            var records = policy.DaneTlsaRecords;
+            return (_, cert, _, _) =>
+            {
+                if (cert is null) return false;
+                using var cert2 = new X509Certificate2(cert);
+                return TlsaValidation.Matches(cert2, records);
+            };
+        }
+        if (policy.Mode == TlsEnforcementMode.RequiredVerified)
+            return (_, _, _, errors) => errors == SslPolicyErrors.None;
+        return (_, _, _, _) => true;
     }
 
     private static async Task<SmtpResponse> SendCommandAsync(Stream stream, SmtpResponseReader reader, string command, CancellationToken cancellationToken)

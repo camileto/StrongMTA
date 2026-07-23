@@ -21,9 +21,9 @@ public class IpPoolTests : IDisposable
 
     private SpoolDeliveryWorker CreateWorker(int smtpPort, PendingRetryIndex pendingIndex, IVirtualMtaProvider vmtaProvider) =>
         new(_fixture.Reader, _fixture.StateUpdater, new TestMxResolver(), _fixture.Accounting,
-            new StaticDomainConfigProvider(EngineTestFixture.CreateDomainConfig()),
+            new StaticDomainConfigProvider(EngineTestFixture.CreateDomainConfig(bounceAfter: TimeSpan.FromHours(1))),
             vmtaProvider, pendingIndex, _fixture.RuleEngine, _fixture.BackoffStateStore,
-            _fixture.DisabledSourceStore, _fixture.BounceQueueService, smtpPort);
+            _fixture.DisabledSourceStore, _fixture.BounceQueueService, smtpPort: smtpPort);
 
     [Fact]
     public async Task IpPool_RoundRobin_AlternatesSourceIpAcrossDeliveries()

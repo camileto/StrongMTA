@@ -17,6 +17,9 @@ public sealed class SmtpDeliveryRequest
     /// <summary>Se true, aborta a entrega (Transient) quando STARTTLS não é aceito ou falha. Default: oportunista.</summary>
     public bool RequireStartTls { get; init; }
 
+    /// <summary>Política TLS a aplicar durante o handshake — substitui <see cref="RequireStartTls"/> quando definida acima de Opportunistic.</summary>
+    public TlsPolicy TlsPolicy { get; init; } = TlsPolicy.Opportunistic;
+
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(30);
     public TimeSpan CommandTimeout { get; init; } = TimeSpan.FromSeconds(60);
     public TimeSpan DataTimeout { get; init; } = TimeSpan.FromMinutes(5);

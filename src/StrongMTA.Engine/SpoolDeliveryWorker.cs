@@ -32,6 +32,8 @@ public sealed class SpoolDeliveryWorker(
     BackoffStateStore backoffStateStore,
     DisabledSourceStore disabledSourceStore,
     BounceQueueService bounceQueueService,
+    IDaneTlsaResolver? daneTlsaResolver = null,
+    IMtaStsResolver? mtaStsResolver = null,
     int smtpPort = 25)
 {
     // contador de round-robin por VirtualMta; int[1] para permitir Interlocked.Increment sobre um ref
@@ -69,20 +71,35 @@ public sealed class SpoolDeliveryWorker(
         var mxHosts = await mxResolver.ResolveAsync(item.DestinationDomain, cancellationToken).ConfigureAwait(false);
         var domainConfig = domainConfigProvider.GetConfig(item.DestinationDomain);
 
+        // MTA-STS: consulta única por domínio (a política é por domínio, não por host MX)
+        var stsPolicy = domainConfig.EnableMtaSts && mtaStsResolver is not null
+            ? await mtaStsResolver.ResolveAsync(item.DestinationDomain, cancellationToken).ConfigureAwait(false)
+            : MtaStsPolicy.None;
+
         SmtpDeliveryResult result;
         ResponseRule? matchedRule;
         var hostIndex = 0;
         while (true)
         {
+            var mxHost = mxHosts[hostIndex];
+
+            // DANE: consulta por host MX (os registros TLSA são por host, não por domínio)
+            var daneRecords = domainConfig.EnableDane && daneTlsaResolver is not null
+                ? await daneTlsaResolver.ResolveAsync(mxHost.HostName, cancellationToken).ConfigureAwait(false)
+                : (IReadOnlyList<DaneTlsaAssociation>)[];
+
+            var tlsPolicy = ResolveTlsPolicy(stsPolicy, daneRecords, mxHost.HostName);
+
             var request = new SmtpDeliveryRequest
             {
-                TargetHost = mxHosts[hostIndex].HostName,
+                TargetHost = mxHost.HostName,
                 TargetPort = smtpPort,
                 HeloHostName = virtualMta.HostName,
                 LocalIpAddress = selectedIp,
                 EnvelopeFrom = item.EnvelopeFrom,
                 RecipientAddress = item.RecipientAddress,
-                OpenBodyStream = ct => spoolReader.OpenBodyStreamAsync(item.MsgFilePath, ct)
+                OpenBodyStream = ct => spoolReader.OpenBodyStreamAsync(item.MsgFilePath, ct),
+                TlsPolicy = tlsPolicy
             };
 
             result = await new SmtpDeliveryClient().SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -229,6 +246,20 @@ public sealed class SpoolDeliveryWorker(
 
         if (rule.Has(ResponseRuleAction.BounceQueue))
             _ = bounceQueueService.BounceQueueAsync(item.DestinationDomain, CancellationToken.None); // fire-and-forget
+    }
+
+    private static TlsPolicy ResolveTlsPolicy(MtaStsPolicy stsPolicy, IReadOnlyList<DaneTlsaAssociation> daneRecords, string mxHost)
+    {
+        // DANE tem precedência: se há registros TLSA validados via DNSSEC, ativa validação DANE-EE.
+        if (daneRecords.Count > 0)
+            return new TlsPolicy { Mode = TlsEnforcementMode.Required, DaneTlsaRecords = daneRecords };
+
+        // MTA-STS enforce: exige TLS + cadeia PKI válida para os hosts listados na política.
+        // Modo testing não bloqueia entrega — observa sem enforçar.
+        if (stsPolicy.Mode == MtaStsPolicyMode.Enforce && stsPolicy.MxMatches(mxHost))
+            return TlsPolicy.RequiredVerified;
+
+        return TlsPolicy.Opportunistic;
     }
 
     private static AccountingEventType ToEventType(RecipientStatus status) => status switch

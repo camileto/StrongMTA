@@ -25,6 +25,12 @@ public sealed class FakeSmtpServer : IAsyncDisposable
     public string FinalResponse { get; set; } = "250 2.0.0 Accepted\r\n";
     public string QuitResponse { get; set; } = "221 2.0.0 Bye\r\n";
     public bool SupportsStartTls { get; set; }
+    /// <summary>
+    /// Certificado TLS externo para testes que precisam conhecer o hash do cert de antemão.
+    /// Quando null (padrão), um certificado auto-assinado é criado por conexão.
+    /// O servidor NÃO descarta este certificado — o chamador é responsável pelo Dispose.
+    /// </summary>
+    public X509Certificate2? Certificate { get; set; }
     public byte[]? ReceivedDataBody { get; private set; }
     public string? ReceivedEhloArgument { get; private set; }
     public IPEndPoint? RemoteEndPoint { get; private set; }
@@ -132,10 +138,19 @@ public sealed class FakeSmtpServer : IAsyncDisposable
             {
                 await WriteAsync(stream, "220 2.0.0 Ready to start TLS\r\n").ConfigureAwait(false);
 
-                using var cert = CreateSelfSignedCertificate();
-                var ssl = new SslStream(stream, leaveInnerStreamOpen: false);
-                await ssl.AuthenticateAsServerAsync(cert).ConfigureAwait(false);
-                stream = ssl;
+                var externalCert = Certificate;
+                var ownedCert = externalCert is null ? CreateSelfSignedCertificate() : null;
+                var cert = externalCert ?? ownedCert!;
+                try
+                {
+                    var ssl = new SslStream(stream, leaveInnerStreamOpen: false);
+                    await ssl.AuthenticateAsServerAsync(cert).ConfigureAwait(false);
+                    stream = ssl;
+                }
+                finally
+                {
+                    ownedCert?.Dispose();
+                }
 
                 line = await ReadLineAsync(stream).ConfigureAwait(false);
                 if (line is null || !line.StartsWith("EHLO", StringComparison.OrdinalIgnoreCase))

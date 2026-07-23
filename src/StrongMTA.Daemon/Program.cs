@@ -69,7 +69,8 @@ builder.Services.AddSingleton(sp => new SpoolDeliveryWorker(
 builder.Services.AddSingleton(sp => new FairShareDeliveryScheduler(
     sp.GetRequiredService<IDomainConfigProvider>(),
     sp.GetRequiredService<SchedulerOptions>(),
-    sp.GetRequiredService<SpoolDeliveryWorker>().DeliverOneAsync));
+    sp.GetRequiredService<SpoolDeliveryWorker>().DeliverOneAsync,
+    sp.GetRequiredService<IVirtualMtaProvider>()));
 builder.Services.AddSingleton<IDeliveryScheduler>(sp => sp.GetRequiredService<FairShareDeliveryScheduler>());
 
 builder.Services.AddSingleton(_ =>

@@ -96,6 +96,7 @@ internal static class MtaConfigLoader
         public string DkimSelector { get; set; } = "default";
         public string? ColdVmtaName { get; set; }
         public int? ColdVmtaDailyLimitPerDomain { get; set; }
+        public int? MaxConcurrentConnections { get; set; }
 
         public VirtualMta ToVirtualMta()
         {
@@ -112,7 +113,8 @@ internal static class MtaConfigLoader
                 HostName = HostName,
                 DkimSelector = DkimSelector,
                 ColdVmtaName = ColdVmtaName,
-                ColdVmtaDailyLimitPerDomain = ColdVmtaDailyLimitPerDomain
+                ColdVmtaDailyLimitPerDomain = ColdVmtaDailyLimitPerDomain,
+                MaxConcurrentConnections = MaxConcurrentConnections
             };
         }
     }

@@ -19,6 +19,7 @@ High-volume Mail Transfer Agent written in C#/.NET 8, inspired by other MTAs. Bu
 - **Per-domain rate limiting** — token-bucket rate limiter per queue (`MaxMessagesPerMinute`); zero (default) disables limiting.
 - **Spool auto-purge** — configurable retention policy (`RetainAfterTerminal`) to automatically delete delivered and expired messages from disk.
 - **VirtualMta IP pool** — round-robin across multiple source IPs within a single VirtualMta; `disable-source-ip` disables the specific failing IP, not the entire VirtualMta, so the remaining IPs keep sending.
+- **VMTA-wide concurrency cap** — optional `maxConcurrentConnections` in the VirtualMta block caps the total simultaneous connections across all destination domains for that VirtualMta; `null` (default) leaves only the per-domain and global limits in effect.
 - **Hot-reload of `mta-config.json`** — domain and VirtualMta config changes are applied within ~500 ms of saving the file, without restarting the daemon; on parse errors the current config is kept and the error is logged.
 - **Admin CLI** — test submission, queue listing/filtering, pause/resume by JobId, accounting tail.
 
@@ -27,7 +28,6 @@ High-volume Mail Transfer Agent written in C#/.NET 8, inspired by other MTAs. Bu
 Planned features for upcoming releases, in no particular order:
 
 - **Message template engine** — full-featured templating with variable substitution, conditionals (`if`/`else`), and loops for per-recipient personalization natively, without external preprocessors.
-- **VMTA-wide concurrency cap** — a concurrency limit summed across all domains for a given VirtualMta.
 - **Suppression list** — native do-not-send list checked at submission and delivery time.
 - **Web dashboard** — real-time queue stats, accounting visualization, and domain-level delivery reports.
 - **HTTP Transmissions API** — REST endpoint for message submission, compatible with common ESP workflow patterns.
@@ -71,7 +71,7 @@ dotnet build StrongMTA.sln
 dotnet test StrongMTA.sln
 ```
 
-147 tests, 0 failures.
+149 tests, 0 failures.
 
 ## Daemon configuration
 

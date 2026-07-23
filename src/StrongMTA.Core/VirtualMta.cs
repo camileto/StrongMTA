@@ -20,5 +20,8 @@ public sealed class VirtualMta
     /// <summary>Mensagens/dia/domínio permitidas antes de desviar para o VirtualMta frio.</summary>
     public int? ColdVmtaDailyLimitPerDomain { get; init; }
 
+    /// <summary>Teto de conexões simultâneas somado em todos os domínios deste VirtualMta. Null = sem limite por VMTA (só valem o teto global e o teto por domínio).</summary>
+    public int? MaxConcurrentConnections { get; init; }
+
     public bool HasWarmup => ColdVmtaName is not null && ColdVmtaDailyLimitPerDomain is not null;
 }

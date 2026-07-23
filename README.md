@@ -16,6 +16,8 @@ High-volume Mail Transfer Agent written in C#/.NET 8, inspired by other MTAs. Bu
 - **Inbound bounce/FBL listener** — dedicated SMTP listener for DSN (RFC 3464) and ARF feedback (RFC 5965); VERP token correlation; category classification.
 - **Crash-safe spool** — write-temp + fsync + rename guarantees atomicity; two-level directory sharding prevents `readdir` degradation with millions of files; automatic recovery on boot.
 - **JSONL accounting** — one file per day, append-only, easy to consume with `jq`.
+- **Per-domain rate limiting** — token-bucket rate limiter per queue (`MaxMessagesPerMinute`); zero (default) disables limiting.
+- **Spool auto-purge** — configurable retention policy (`RetainAfterTerminal`) to automatically delete delivered and expired messages from disk.
 - **Admin CLI** — test submission, queue listing/filtering, pause/resume by JobId, accounting tail.
 
 ## Roadmap
@@ -23,10 +25,8 @@ High-volume Mail Transfer Agent written in C#/.NET 8, inspired by other MTAs. Bu
 Planned features for upcoming releases, in no particular order:
 
 - **Message template engine** — full-featured templating with variable substitution, conditionals (`if`/`else`), and loops for per-recipient personalization natively, without external preprocessors.
-- **Per-domain rate limiting** — maximum messages per minute per queue (`MaxMessagesPerMinute`), using a token-bucket algorithm.
 - **VMTA-wide concurrency cap** — an additional concurrency limit summed across all domains for a given VirtualMta.
 - **Suppression list** — native do-not-send list checked at submission and delivery time.
-- **Spool auto-purge** — configurable retention policy to clean up delivered and expired messages.
 - **Web dashboard** — real-time queue stats, accounting visualization, and domain-level delivery reports.
 - **HTTP Transmissions API** — REST endpoint for message submission, compatible with common ESP workflow patterns.
 - **DANE / MTA-STS** — opportunistic and enforced TLS policy support for outbound delivery.
@@ -71,7 +71,7 @@ dotnet build StrongMTA.sln
 dotnet test StrongMTA.sln
 ```
 
-134 tests, 0 failures.
+140 tests, 0 failures.
 
 ## Daemon configuration
 

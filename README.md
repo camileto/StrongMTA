@@ -102,7 +102,9 @@ dotnet test StrongMTA.sln
       "domainName": "gmail.com",
       "maxConcurrentConnections": 40,
       "retryIntervals": ["00:10:00", "00:30:00", "01:00:00", "04:00:00"],
-      "bounceAfter": "2.00:00:00"
+      "bounceAfter": "2.00:00:00",
+      "enableDane": true,
+      "enableMtaSts": true
     },
     {
       "domainName": "*",

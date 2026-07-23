@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Threading.RateLimiting;
 using StrongMTA.Core;
 
 namespace StrongMTA.Engine;
@@ -60,8 +61,19 @@ public sealed class FairShareDeliveryScheduler(
 
     private QueueLane CreateLane(QueueKey key)
     {
-        var maxConcurrent = domainConfigProvider.GetConfig(key.DestinationDomain).MaxConcurrentConnections;
-        return new QueueLane(key, maxConcurrent, this);
+        var config = domainConfigProvider.GetConfig(key.DestinationDomain);
+        var rateLimiter = config.MaxMessagesPerMinute > 0
+            ? new TokenBucketRateLimiter(new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = config.MaxMessagesPerMinute,
+                TokensPerPeriod = config.MaxMessagesPerMinute,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                AutoReplenishment = true,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+            })
+            : null;
+        return new QueueLane(key, config.MaxConcurrentConnections, this, rateLimiter);
     }
 
     internal bool TryAcquireGlobalSlot() => _globalGate?.Wait(0) ?? false;

@@ -7,7 +7,8 @@ namespace StrongMTA.Core;
 public sealed class DomainConfig
 {
     public required string DomainName { get; init; }
-    public int MaxMessagesPerMinute { get; init; } = 100;
+    /// <summary>Máximo de mensagens por minuto para esta fila (domínio × VirtualMta). Zero = sem limite (padrão).</summary>
+public int MaxMessagesPerMinute { get; init; } = 0;
     public int MaxConcurrentConnections { get; init; } = 5;
 
     /// <summary>Intervalos progressivos de retry (ex: 10m, 30m, 1h, 4h, ...). O último repete até BounceAfter.</summary>

@@ -69,6 +69,19 @@ builder.Services.AddSingleton(sp => new FairShareDeliveryScheduler(
     sp.GetRequiredService<SpoolDeliveryWorker>().DeliverOneAsync));
 builder.Services.AddSingleton<IDeliveryScheduler>(sp => sp.GetRequiredService<FairShareDeliveryScheduler>());
 
+builder.Services.AddSingleton(_ =>
+{
+    var intervalStr = builder.Configuration["Spool:PurgeInterval"];
+    var retainStr = builder.Configuration["Spool:RetainAfterTerminal"];
+    var defaults = SpoolPurgeOptions.CreateDefault();
+    return new SpoolPurgeOptions
+    {
+        PollInterval = intervalStr is not null ? TimeSpan.Parse(intervalStr) : defaults.PollInterval,
+        RetainAfterTerminal = retainStr is not null ? TimeSpan.Parse(retainStr) : defaults.RetainAfterTerminal
+    };
+});
+builder.Services.AddSingleton<SpoolPurgeService>();
+
 builder.Services.AddSingleton(sp => new RetryScheduler(
     sp.GetRequiredService<PendingRetryIndex>(),
     sp.GetRequiredService<IDeliveryScheduler>()));

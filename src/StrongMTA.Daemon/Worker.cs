@@ -5,8 +5,8 @@ namespace StrongMTA.Daemon;
 
 /// <summary>
 /// Host real do daemon: recupera o spool no boot, liga o scheduler de entrega (paralelo,
-/// respeitando teto global e por domínio×VirtualMta), o promotor periódico de retries, e o
-/// listener de bounce/FBL — tudo de ponta a ponta, primeira vez que isso roda fora de testes.
+/// respeitando teto global e por domínio×VirtualMta), o promotor periódico de retries, o
+/// purge periódico de arquivos terminais e o listener de bounce/FBL.
 /// </summary>
 public sealed class Worker(
     ILogger<Worker> logger,
@@ -14,6 +14,7 @@ public sealed class Worker(
     FairShareDeliveryScheduler scheduler,
     PendingRetryIndex pendingRetryIndex,
     RetryScheduler retryScheduler,
+    SpoolPurgeService spoolPurgeService,
     BounceListener bounceListener) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -28,7 +29,8 @@ public sealed class Worker(
         {
             await Task.WhenAll(
                 scheduler.RunAsync(stoppingToken),
-                retryScheduler.RunAsync(TimeSpan.FromSeconds(5), stoppingToken)
+                retryScheduler.RunAsync(TimeSpan.FromSeconds(5), stoppingToken),
+                spoolPurgeService.RunAsync(stoppingToken)
             ).ConfigureAwait(false);
         }
         finally
